@@ -35,6 +35,8 @@ import {
     ArcElement
 } from 'chart.js';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // Register ChartJS
 ChartJS.register(
@@ -70,7 +72,7 @@ export default function AdminDashboard() {
                 .from('complaints')
                 .select(`
                     *,
-                    citizen:users!complaints_user_id_fkey(full_name, email),
+                    citizen:users!user_id(full_name, email),
                     department:departments(name)
                 `)
                 .order('created_at', { ascending: false });
@@ -95,6 +97,7 @@ export default function AdminDashboard() {
 
         } catch (error) {
             console.error("Error fetching admin data:", error);
+            alert("Failed to load reports: " + (error.message || "Unknown Error"));
         } finally {
             setLoading(false);
         }
@@ -155,6 +158,69 @@ export default function AdminDashboard() {
     const handleLogout = () => {
         localStorage.removeItem('user_session');
         window.location.reload();
+    };
+
+    const handleExportPDF = (complaint) => {
+        try {
+            const doc = new jsPDF();
+            const adminName = user?.full_name || 'Admin User';
+            const exportTime = new Date().toLocaleString();
+
+            // Title & Branding
+            doc.setFontSize(22);
+            doc.setTextColor(30, 64, 175); // Indigo-900
+            doc.text("AdminResolve Municipal", 14, 20);
+
+            doc.setFontSize(12);
+            doc.setTextColor(100);
+            doc.text("Municipal Corporation Report", 14, 30);
+
+            doc.line(14, 37, 196, 37);
+
+            // Core Content Table
+            autoTable(doc, {
+                startY: 45,
+                head: [['Field', 'Information']],
+                body: [
+                    ['Complaint ID', `#${complaint.id.slice(0, 8)}`],
+                    ['Report Type', 'Official Complaint Filing'],
+                    ['Citizen Name', complaint.citizen?.full_name || 'Anonymous'],
+                    ['Category', complaint.category],
+                    ['Department', complaint.department?.name || 'Unassigned'],
+                    ['Status', complaint.status.toUpperCase()],
+                    ['Priority', complaint.priority.toUpperCase()],
+                    ['Location (Address)', complaint.formatted_address || 'No Address Provided'],
+                    ['Date of Filing', new Date(complaint.created_at).toLocaleString()],
+                    ['SLA Deadline', new Date(complaint.sla_deadline).toLocaleString()],
+                ],
+                theme: 'striped',
+                headStyles: { fillColor: [79, 70, 229] }, // Indigo-600
+            });
+
+            // Description
+            const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : 150;
+            doc.setFontSize(14);
+            doc.setTextColor(30, 64, 175);
+            doc.text("Issue Description:", 14, finalY + 15);
+
+            doc.setFontSize(11);
+            doc.setTextColor(50);
+            const descriptionText = complaint.description || "No description provided.";
+            const splitDescription = doc.splitTextToSize(descriptionText, 170);
+            doc.text(splitDescription, 14, finalY + 25);
+
+            // Footer Metadata
+            doc.setFontSize(10);
+            doc.setTextColor(150);
+            doc.text(`Exported By: ${adminName}`, 14, 280);
+            doc.text(`Date of Export: ${exportTime}`, 14, 285);
+            doc.text("Confidential Municipal Document", 196, 285, { align: 'right' });
+
+            doc.save(`report_${complaint.id.slice(0, 8)}.pdf`);
+        } catch (error) {
+            console.error("PDF Export Error:", error);
+            alert("Failed to generate PDF. Check console for details.");
+        }
     };
 
     const navItems = [
@@ -361,8 +427,11 @@ export default function AdminDashboard() {
                                 <button className="px-5 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 hover:border-slate-300 flex items-center gap-2 shadow-sm transition-all">
                                     <Filter size={16} /> Filters
                                 </button>
-                                <button className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2 transition-all hover:-translate-y-px">
-                                    <Download size={16} /> Export Report
+                                <button
+                                    disabled
+                                    className="px-5 py-2.5 bg-slate-300 text-white rounded-xl text-sm font-bold flex items-center gap-2 transition-all cursor-not-allowed opacity-50"
+                                >
+                                    <Download size={16} /> Global Export
                                 </button>
                             </div>
                         </div>
@@ -415,6 +484,7 @@ export default function AdminDashboard() {
                                                 <th className="p-5">Department</th>
                                                 <th className="p-5">Status</th>
                                                 <th className="p-5">SLA Timer</th>
+                                                <th className="p-5 text-center">Export</th>
                                                 <th className="p-5 pr-8 text-right">Actions</th>
                                             </tr>
                                         </thead>
@@ -458,6 +528,15 @@ export default function AdminDashboard() {
                                                             {new Date(item.sla_deadline).toLocaleDateString()}
                                                         </div>
                                                     </td>
+                                                    <td className="p-5 text-center">
+                                                        <button
+                                                            onClick={() => handleExportPDF(item)}
+                                                            title="Export PDF"
+                                                            className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                                        >
+                                                            <Download size={18} />
+                                                        </button>
+                                                    </td>
                                                     <td className="p-5 pr-8 text-right">
                                                         <select
                                                             className="text-[10px] font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none"
@@ -474,7 +553,7 @@ export default function AdminDashboard() {
                                             ))}
                                             {complaints.length === 0 && (
                                                 <tr>
-                                                    <td colSpan="7" className="p-10 text-center text-slate-400 font-medium font-heading">
+                                                    <td colSpan="8" className="p-10 text-center text-slate-400 font-medium font-heading">
                                                         No records found in the system.
                                                     </td>
                                                 </tr>
