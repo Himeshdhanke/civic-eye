@@ -4,12 +4,13 @@ const ai = new GoogleGenAI({
   apiKey: import.meta.env.VITE_GEMINI_API_KEY
 });
 
-export const categorizeIssue = async (description) => {
+export const categorizeIssue = async (description, imageFile = null) => {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `
-You are a civic issue classification system.
+    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    let prompt = `
+You are a civic issue classification system. 
+Analyze the following description (and image if provided).
 
 Return ONLY valid JSON:
 {
@@ -19,12 +20,36 @@ Return ONLY valid JSON:
   "formatted_title": "Short descriptive title"
 }
 
-Issue:
+Issue Description:
 ${description}
-`
+`;
+
+    let parts = [{ text: prompt }];
+
+    if (imageFile) {
+      // Helper to convert file to base64
+      const fileToGenerativePart = async (file) => {
+        const base64Promise = new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result.split(',')[1]);
+          reader.readAsDataURL(file);
+        });
+        return {
+          inlineData: {
+            data: await base64Promise,
+            mimeType: file.type
+          },
+        };
+      };
+      const imagePart = await fileToGenerativePart(imageFile);
+      parts.push(imagePart);
+    }
+
+    const response = await model.generateContent({
+      contents: [{ role: "user", parts }]
     });
 
-    const text = response.text;
+    const text = response.response.text();
 
     try {
       return JSON.parse(text);

@@ -1,0 +1,14 @@
+{
+    "name": "civiceye",
+    "version": "1.0.0",
+    "description": "Unified CivicEye AI platform",
+    "scripts": {
+        "client:dev": "npm run dev --prefix client",
+        "client:build": "npm run build --prefix client",
+        "admin:create": "python create_admin.py",
+        "dev": "npm run client:dev"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC"
+}

@@ -52,6 +52,9 @@ export default function CitizenDashboard() {
         resolved: 0,
         escalated: 0
     });
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [previewUrl, setPreviewUrl] = useState(null);
+    const [isUploading, setIsUploading] = useState(false);
     const [allComplaints, setAllComplaints] = useState([]);
     const recognitionRef = useRef(null);
     const isListeningRef = useRef(false);
@@ -141,7 +144,7 @@ export default function CitizenDashboard() {
     const fetchData = async () => {
         const { data, error } = await supabase
             .from('complaints')
-            .select('*')
+            .select('*, attachments:media_attachments(*)')
             .eq('user_id', user.id)
             .order('created_at', { ascending: false });
 
@@ -267,12 +270,24 @@ export default function CitizenDashboard() {
         await new Promise(r => setTimeout(r, 1500));
 
         try {
-            const result = await categorizeIssue(complaintText);
+            const result = await categorizeIssue(complaintText, selectedFile);
             setAiResult(result);
         } catch (error) {
             console.error("Analysis failed", error);
         } finally {
             setIsAnalyzing(false);
+        }
+    };
+
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            if (file.size > 5 * 1024 * 1024) {
+                alert("File size too large. Please select an image under 5MB.");
+                return;
+            }
+            setSelectedFile(file);
+            setPreviewUrl(URL.createObjectURL(file));
         }
     };
 
@@ -308,6 +323,32 @@ export default function CitizenDashboard() {
 
             if (compError) throw compError;
 
+            // Handle Image Upload if selected
+            if (selectedFile) {
+                setIsUploading(true);
+                const fileExt = selectedFile.name.split('.').pop();
+                const fileName = `${user.id}/${complaint.id}.${fileExt}`;
+                const filePath = `complaints/${fileName}`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('complaints-media')
+                    .upload(filePath, selectedFile);
+
+                if (!uploadError) {
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('complaints-media')
+                        .getPublicUrl(filePath);
+
+                    await supabase.from('media_attachments').insert([{
+                        complaint_id: complaint.id,
+                        file_url: publicUrl,
+                        file_type: 'image'
+                    }]);
+                } else {
+                    console.error("Storage upload error:", uploadError);
+                }
+            }
+
             // Log history
             await supabase.from('complaint_history').insert([{
                 complaint_id: complaint.id,
@@ -324,6 +365,8 @@ export default function CitizenDashboard() {
                 setAiResult(null);
                 setComplaintText('');
                 setSelectedLocation(null);
+                setSelectedFile(null);
+                setPreviewUrl(null);
                 setActiveTab('history');
             }, 2000);
 
@@ -371,7 +414,7 @@ export default function CitizenDashboard() {
                                 <ShieldAlert size={28} className="fill-current" />
                             </div>
                             <div>
-                                <h1 className="text-xl font-heading font-bold leading-none tracking-tight">SmartResolve</h1>
+                                <h1 className="text-xl font-heading font-bold leading-none tracking-tight">CivicEye</h1>
                                 <span className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">CITIZEN PORTAL</span>
                             </div>
                         </div>
@@ -584,11 +627,32 @@ export default function CitizenDashboard() {
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-                                        <div className="p-6 border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center text-slate-400 gap-3 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer h-40 group bg-slate-50/50">
-                                            <div className="p-3 bg-white rounded-full shadow-sm group-hover:scale-110 transition-transform">
-                                                <ImagePlus size={24} className="text-slate-500 group-hover:text-primary-500" />
-                                            </div>
-                                            <span className="text-sm font-bold group-hover:text-primary-600">Upload Photo Evidence</span>
+                                        <div
+                                            className="relative p-6 border-2 border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center text-slate-400 gap-3 hover:border-primary-400 hover:bg-primary-50/50 transition-all cursor-pointer h-40 group bg-slate-50/50 overflow-hidden"
+                                            onClick={() => document.getElementById('image-upload').click()}
+                                        >
+                                            <input
+                                                id="image-upload"
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={handleFileChange}
+                                                className="hidden"
+                                            />
+                                            {previewUrl ? (
+                                                <div className="absolute inset-0 w-full h-full">
+                                                    <img src={previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <span className="text-white text-xs font-bold px-3 py-1.5 bg-white/20 backdrop-blur-md rounded-lg border border-white/30">Change Photo</span>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <div className="p-3 bg-white rounded-full shadow-sm group-hover:scale-110 transition-transform">
+                                                        <ImagePlus size={24} className="text-slate-500 group-hover:text-primary-500" />
+                                                    </div>
+                                                    <span className="text-sm font-bold group-hover:text-primary-600">Upload Photo Evidence</span>
+                                                </>
+                                            )}
                                         </div>
                                         <button
                                             onClick={() => setShowMapModal(true)}
@@ -775,6 +839,15 @@ export default function CitizenDashboard() {
                                             <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 text-sm text-slate-600 font-medium leading-relaxed mb-5 italic">
                                                 "{item.description}"
                                             </div>
+                                            {item.attachments?.length > 0 && (
+                                                <div className="mb-5 flex gap-3 overflow-x-auto pb-2">
+                                                    {item.attachments.map((file, idx) => (
+                                                        <div key={idx} className="w-32 h-32 rounded-xl overflow-hidden shadow-sm border border-slate-200 shrink-0">
+                                                            <img src={file.file_url} alt="Attachment" className="w-full h-full object-cover" />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                             <div className="flex items-center gap-8 text-xs font-bold text-slate-400 uppercase tracking-wider">
                                                 <span className={`flex items-center gap-2 px-3 py-1 rounded-lg ${new Date(item.sla_deadline) > new Date() || item.status === 'resolved' ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
                                                     <Clock size={14} /> SLA: {new Date(item.sla_deadline) > new Date() || item.status === 'resolved' ? 'Active' : 'Breached'}

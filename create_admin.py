@@ -31,7 +31,7 @@ def create_admin(email, password, full_name):
         print(response.text)
 
 if __name__ == "__main__":
-    print("--- SmartResolve AI Admin Creator ---")
+    print("--- CivicEye Admin Creator ---")
     email = input("Enter Admin Email: ")
     password = input("Enter Admin Password: ")
     name = input("Enter Full Name: ")

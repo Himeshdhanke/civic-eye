@@ -64,7 +64,7 @@ export default function Auth() {
                     <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg shadow-primary-500/30 transform rotate-3">
                         <ShieldAlert size={36} />
                     </div>
-                    <h1 className="text-3xl font-heading font-extrabold text-slate-800 tracking-tight">SmartResolve AI</h1>
+                    <h1 className="text-3xl font-heading font-extrabold text-slate-800 tracking-tight">CivicEye</h1>
                     <p className="text-slate-500 mt-2 text-center font-medium">
                         {isSignUp ? 'Join your civic community' : 'Welcome back, citizen'}
                     </p>

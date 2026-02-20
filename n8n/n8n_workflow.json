@@ -1,5 +1,5 @@
 {
-    "name": "SmartResolve Email Workflow",
+    "name": "CivicEye Email Workflow",
     "nodes": [
         {
             "parameters": {
@@ -17,10 +17,10 @@
         },
         {
             "parameters": {
-                "fromEmail": "no-reply@smartresolve.ai",
+                "fromEmail": "no-reply@civiceye.ai",
                 "toEmail": "={{$node[\"Supabase Webhook\"].json[\"email\"]}}",
                 "subject": "Update on your Complaint: {{$node[\"Supabase Webhook\"].json[\"id\"]}}",
-                "text": "Your complaint status has been updated to: {{$node[\"Supabase Webhook\"].json[\"status\"]}}"
+                "text": "Your complaint status for CivicEye has been updated to: {{$node[\"Supabase Webhook\"].json[\"status\"]}}"
             },
             "name": "Send Email",
             "type": "n8n-nodes-base.emailSend",

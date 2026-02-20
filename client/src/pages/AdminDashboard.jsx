@@ -346,7 +346,7 @@ export default function AdminDashboard() {
                             <div className="p-2 bg-linear-to-br from-indigo-500 to-blue-600 rounded-lg shadow-lg shadow-blue-500/20">
                                 <ShieldAlert size={24} className="text-white" />
                             </div>
-                            <h1 className="text-xl font-heading font-extrabold tracking-tight">Admin<span className="text-indigo-400">Resolve</span></h1>
+                            <h1 className="text-xl font-heading font-extrabold tracking-tight">CivicEye <span className="text-indigo-400">Admin</span></h1>
                         </div>
                         <p className="text-[10px] font-bold text-slate-400 tracking-[0.2em] uppercase ml-11">Municipal Authority</p>
 
