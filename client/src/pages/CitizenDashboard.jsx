@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import {
     Map as MapIcon,
@@ -39,13 +39,19 @@ export default function CitizenDashboard() {
     const [selectedLocation, setSelectedLocation] = useState(null);
     const [showMapModal, setShowMapModal] = useState(false);
     const [departments, setDepartments] = useState([]);
+    const [isListening, setIsListening] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isSuccess, setIsSuccess] = useState(false);
+    const recognitionRef = useRef(null);
 
     const user = JSON.parse(localStorage.getItem('user_session'));
 
     useEffect(() => {
         fetchDepartments();
+        return () => {
+            if (recognitionRef.current) {
+                recognitionRef.current.stop();
+            }
+        };
     }, []);
 
     const fetchDepartments = async () => {
@@ -56,6 +62,96 @@ export default function CitizenDashboard() {
     const handleLogout = () => {
         localStorage.removeItem('user_session');
         window.location.reload();
+    };
+
+    const toggleListening = () => {
+        console.log("Toggle listening triggered. Current state:", isListening);
+
+        if (isListening) {
+            console.log("Stopping recognition manually...");
+            if (recognitionRef.current) {
+                try {
+                    recognitionRef.current.stop();
+                } catch (err) {
+                    console.error("Error stopping recognition:", err);
+                }
+            }
+            setIsListening(false);
+            setInterimText('');
+            return;
+        }
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            console.error("SpeechRecognition not found in window or window.webkit");
+            alert("Speech recognition is not supported in this browser. Please use a modern version of Chrome.");
+            return;
+        }
+
+        try {
+            console.log("Initializing new SpeechRecognition instance...");
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => {
+                console.log("Recognition.onstart fired");
+                setIsListening(true);
+            };
+
+            recognition.onend = () => {
+                console.log("Recognition.onend fired. isListening was:", isListening);
+                setIsListening(false);
+                setInterimText('');
+                recognitionRef.current = null;
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Recognition.onerror fired:", event.error, event.message);
+                setIsListening(false);
+                setInterimText('');
+
+                if (event.error === 'not-allowed') {
+                    alert("Microphone permission denied. Please click the lock icon in the address bar and enable the microphone.");
+                } else if (event.error === 'network') {
+                    alert("Speech Network Error: The browser's speech service is currently unreachable. This often happens on slow connections or if the service is blocked. Please try manual typing or check your internet connection.");
+                } else if (event.error === 'no-speech') {
+                    console.warn("No speech detected - closing automatically.");
+                } else {
+                    alert(`Voice Error: ${event.error}. Please try again or type manually.`);
+                }
+            };
+
+            recognition.onresult = (event) => {
+                console.log("Recognition.onresult fired. Results length:", event.results.length);
+                let interim = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        console.log("Final transcript segment:", transcript);
+                        setComplaintText(prev => prev + (prev.trim() ? ' ' : '') + transcript);
+                    } else {
+                        interim += transcript;
+                    }
+                }
+                setInterimText(interim);
+            };
+
+            // Diagnostic Events
+            recognition.onaudiostart = () => console.log("Audio capturing started");
+            recognition.onsoundstart = () => console.log("Sound detected");
+            recognition.onspeechstart = () => console.log("Speech detected");
+
+            recognitionRef.current = recognition;
+            recognition.start();
+            console.log("recognition.start() called successfully");
+        } catch (error) {
+            console.error("Failed to start SpeechRecognition:", error);
+            setIsListening(false);
+            alert("Could not start voice recognition. Please ensure your microphone is connected and try again.");
+        }
     };
 
     const handleAnalyze = async () => {
@@ -319,8 +415,8 @@ export default function CitizenDashboard() {
 
                         {activeTab === 'raise' && (
                             <div className="max-w-4xl mx-auto animate-in slide-in-from-right-8 duration-700">
-                                <div className="bg-white/80 backdrop-blur-xl rounded-[2rem] p-6 md:p-10 shadow-xl border border-white/50 relative overflow-hidden">
-                                    <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-primary-400 via-purple-500 to-primary-600"></div>
+                                <div className="bg-white/80 backdrop-blur-xl rounded-4xl p-6 md:p-10 shadow-xl border border-white/50 relative overflow-hidden">
+                                    <div className="absolute top-0 left-0 w-full h-2 bg-linear-to-r from-primary-400 via-purple-500 to-primary-600"></div>
 
                                     <div className="flex items-center gap-4 mb-8 text-slate-800">
                                         <div className="p-3 bg-primary-50 text-primary-600 rounded-2xl shadow-sm border border-primary-100">
@@ -342,9 +438,12 @@ export default function CitizenDashboard() {
                                         <div className="relative">
                                             <textarea
                                                 value={complaintText + (interimText ? (complaintText ? ' ' : '') + interimText : '')}
-                                                onChange={(e) => setComplaintText(e.target.value)}
+                                                onChange={(e) => {
+                                                    setComplaintText(e.target.value);
+                                                    setInterimText(''); // Stop showing interim if user manually types
+                                                }}
                                                 placeholder="E.g., Large pothole at the intersection of Main St and Oak Ave..."
-                                                className="w-full h-64 p-8 bg-white rounded-[2rem] border-2 border-slate-100 focus:border-primary-500 transition-all resize-none text-slate-700 placeholder:text-slate-400 font-medium text-xl leading-relaxed shadow-2xl"
+                                                className="w-full h-64 p-8 bg-white rounded-4xl border-2 border-slate-100 focus:border-primary-500 transition-all resize-none text-slate-700 placeholder:text-slate-400 font-medium text-xl leading-relaxed shadow-2xl"
                                             />
 
                                             {isRefining && (
@@ -479,7 +578,7 @@ export default function CitizenDashboard() {
                         )}
 
                         {activeTab === 'map' && (
-                            <div className="h-[700px] bg-white rounded-[2rem] border border-slate-200 p-2 shadow-xl flex flex-col animate-in zoom-in-95 duration-700">
+                            <div className="h-[700px] bg-white rounded-4xl border border-slate-200 p-2 shadow-xl flex flex-col animate-in zoom-in-95 duration-700">
                                 <div className="p-4 flex items-center gap-4 overflow-x-auto pb-4 scrollbar-hide">
                                     <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-full border border-slate-200">
                                         <Filter size={16} className="text-slate-500" />
@@ -499,7 +598,7 @@ export default function CitizenDashboard() {
                                 <div className="flex-1 bg-slate-100 rounded-[1.5rem] relative overflow-hidden group">
                                     <div className="absolute inset-0 bg-[url('https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png')] bg-cover opacity-60 grayscale-[20%]"></div>
                                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-t from-slate-900/10 to-transparent">
-                                        <div className="bg-white/90 backdrop-blur-lg p-8 rounded-[2rem] shadow-2xl text-center border border-white/60 max-w-md mx-6 transform transition-all hover:scale-105 duration-500">
+                                        <div className="bg-white/90 backdrop-blur-lg p-8 rounded-4xl shadow-2xl text-center border border-white/60 max-w-md mx-6 transform transition-all hover:scale-105 duration-500">
                                             <div className="w-20 h-20 bg-gradient-to-br from-primary-400 to-primary-600 text-white rounded-3xl rotate-3 flex items-center justify-center mx-auto mb-6 shadow-xl shadow-primary-500/30">
                                                 <MapIcon size={40} />
                                             </div>
@@ -570,9 +669,9 @@ export default function CitizenDashboard() {
 
             {/* Success Overlay - Premium Celebration */}
             {isSuccess && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-primary-900/20 backdrop-blur-xl animate-in fade-in duration-500">
+                <div className="fixed inset-0 z-100 flex items-center justify-center p-6 bg-primary-900/20 backdrop-blur-xl animate-in fade-in duration-500">
                     <div className="bg-white rounded-[3rem] p-12 text-center shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] border border-white max-w-sm w-full animate-in zoom-in-95 duration-500 relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-green-400 to-blue-500"></div>
+                        <div className="absolute top-0 left-0 w-full h-2 bg-linear-to-r from-green-400 to-blue-500"></div>
                         <div className="w-24 h-24 bg-green-100 text-green-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl shadow-green-100 rotate-3">
                             <ShieldCheck size={48} />
                         </div>
