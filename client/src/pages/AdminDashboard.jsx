@@ -195,7 +195,7 @@ export default function AdminDashboard() {
         try {
             const { error } = await supabase
                 .from('complaints')
-                .update({ status: newStatus, updated_at: new Date().toISOString() })
+                .update({ status: newStatus })
                 .eq('id', complaintId);
 
             if (error) throw error;
@@ -236,8 +236,7 @@ export default function AdminDashboard() {
                 .from('complaints')
                 .update({
                     assigned_staff_id: staffId,
-                    status: 'assigned',
-                    updated_at: new Date().toISOString()
+                    status: 'assigned'
                 })
                 .eq('id', complaintId);
 
