@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 import {
     Map as MapIcon,
     PlusCircle,
@@ -21,6 +22,7 @@ import {
     User
 } from 'lucide-react';
 import { categorizeIssue } from '../services/geminiService';
+import MapPicker from '../components/MapPicker';
 
 export default function CitizenDashboard() {
     const [activeTab, setActiveTab] = useState('dashboard');
@@ -28,6 +30,22 @@ export default function CitizenDashboard() {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [complaintText, setComplaintText] = useState('');
     const [aiResult, setAiResult] = useState(null);
+    const [selectedLocation, setSelectedLocation] = useState(null);
+    const [showMapModal, setShowMapModal] = useState(false);
+    const [departments, setDepartments] = useState([]);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSuccess, setIsSuccess] = useState(false);
+
+    const user = JSON.parse(localStorage.getItem('user_session'));
+
+    useEffect(() => {
+        fetchDepartments();
+    }, []);
+
+    const fetchDepartments = async () => {
+        const { data, error } = await supabase.from('departments').select('*');
+        if (!error) setDepartments(data);
+    };
 
     const handleLogout = () => {
         localStorage.removeItem('user_session');
@@ -47,6 +65,63 @@ export default function CitizenDashboard() {
             console.error("Analysis failed", error);
         } finally {
             setIsAnalyzing(false);
+        }
+    };
+
+    const handleFileComplaint = async () => {
+        if (!selectedLocation || !aiResult || !complaintText) {
+            alert("Please provide all details including location.");
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            // Find department ID
+            const dept = departments.find(d =>
+                d.name.toLowerCase().includes(aiResult.department.toLowerCase()) ||
+                aiResult.department.toLowerCase().includes(d.name.toLowerCase())
+            );
+
+            const { data: complaint, error: compError } = await supabase
+                .from('complaints')
+                .insert([{
+                    user_id: user.id,
+                    department_id: dept?.id,
+                    title: aiResult.formatted_title || "New Complaint",
+                    description: complaintText,
+                    category: aiResult.category,
+                    status: 'open',
+                    priority: aiResult.priority.toLowerCase(),
+                    location: `POINT(${selectedLocation.lng} ${selectedLocation.lat})`,
+                    sla_deadline: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(), // 48h default
+                }])
+                .select()
+                .single();
+
+            if (compError) throw compError;
+
+            // Log history
+            await supabase.from('complaint_history').insert([{
+                complaint_id: complaint.id,
+                status_to: 'open',
+                comment: 'Complaint filed by citizen via AI portal',
+                actor_id: user.id
+            }]);
+
+            setIsSuccess(true);
+            setTimeout(() => {
+                setIsSuccess(false);
+                setAiResult(null);
+                setComplaintText('');
+                setSelectedLocation(null);
+                setActiveTab('history');
+            }, 2000);
+
+        } catch (error) {
+            console.error("Submission failed", error);
+            alert("Failed to submit complaint. Please try again.");
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -94,7 +169,7 @@ export default function CitizenDashboard() {
                         <div className="px-5 py-4 bg-primary-50/50 rounded-2xl border border-primary-100 mb-6 relative overflow-hidden group">
                             <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary-100/50 rounded-full blur-xl group-hover:scale-150 transition-transform duration-700"></div>
                             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 relative z-10">Welcome back,</p>
-                            <p className="font-heading font-black text-xl text-primary-700 relative z-10">Alex Johnson</p>
+                            <p className="font-heading font-black text-xl text-primary-700 relative z-10">{user?.full_name || 'Citizen'}</p>
                         </div>
                     </div>
 
@@ -273,12 +348,25 @@ export default function CitizenDashboard() {
                                             </div>
                                             <span className="text-sm font-bold group-hover:text-primary-600">Upload Photo Evidence</span>
                                         </div>
-                                        <button className="p-6 bg-white border border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-500 gap-3 hover:border-primary-400 hover:text-primary-600 hover:shadow-lg hover:shadow-primary-50 transition-all h-40 group relative overflow-hidden">
+                                        <button
+                                            onClick={() => setShowMapModal(true)}
+                                            className="p-6 bg-white border border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-500 gap-3 hover:border-primary-400 hover:text-primary-600 hover:shadow-lg hover:shadow-primary-50 transition-all h-40 group relative overflow-hidden"
+                                        >
                                             <div className="absolute inset-0 bg-gradient-to-br from-primary-50/0 to-primary-50/50 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                            <div className="p-3 bg-slate-50 rounded-full shadow-sm group-hover:bg-white z-10">
+                                            <div className={`p-3 rounded-full shadow-sm z-10 transition-colors ${selectedLocation ? 'bg-primary-600 text-white' : 'bg-slate-50 group-hover:bg-white'}`}>
                                                 <MapPin size={24} />
                                             </div>
-                                            <span className="text-sm font-bold z-10">Auto-Detect Location</span>
+                                            <span className="text-sm font-bold z-10">
+                                                {selectedLocation
+                                                    ? `${selectedLocation.lat.toFixed(4)}, ${selectedLocation.lng.toFixed(4)}`
+                                                    : "Select Location on Map"
+                                                }
+                                            </span>
+                                            {selectedLocation && (
+                                                <div className="absolute top-3 right-3 bg-green-500 text-white p-1 rounded-full animate-in zoom-in">
+                                                    <CheckCircle2 size={12} />
+                                                </div>
+                                            )}
                                         </button>
                                     </div>
 
@@ -335,9 +423,28 @@ export default function CitizenDashboard() {
                                                 </div>
                                             </div>
 
-                                            <button className="w-full mt-8 py-5 bg-green-600 text-white rounded-2xl font-bold text-xl hover:bg-green-700 transition-all shadow-xl shadow-green-200 hover:shadow-green-300 flex items-center justify-center gap-3 transform active:scale-[0.98]">
-                                                <CheckCircle2 size={24} />
-                                                Confirm & File Report
+                                            <button
+                                                onClick={handleFileComplaint}
+                                                disabled={isSubmitting || isSuccess}
+                                                className={`w-full mt-8 py-5 text-white rounded-2xl font-bold text-xl transition-all shadow-xl flex items-center justify-center gap-3 transform active:scale-[0.98] ${isSuccess ? 'bg-green-600 shadow-green-200' : 'bg-green-600 hover:bg-green-700 shadow-green-200 hover:shadow-green-300'
+                                                    }`}
+                                            >
+                                                {isSubmitting ? (
+                                                    <>
+                                                        <Loader2 size={24} className="animate-spin" />
+                                                        Recording Report...
+                                                    </>
+                                                ) : isSuccess ? (
+                                                    <>
+                                                        <CheckCircle2 size={24} />
+                                                        Successfully Filed!
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <CheckCircle2 size={24} />
+                                                        Confirm & File Report
+                                                    </>
+                                                )}
                                             </button>
                                         </div>
                                     )}
@@ -416,6 +523,23 @@ export default function CitizenDashboard() {
                         )}
                     </div>
                 </div>
+
+                {/* Map Modal */}
+                {showMapModal && (
+                    <div className="fixed inset-0 z-100 flex items-center justify-center p-4 md:p-8">
+                        <div
+                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"
+                            onClick={() => setShowMapModal(false)}
+                        />
+                        <div className="relative w-full max-w-4xl h-[80vh] z-10">
+                            <MapPicker
+                                initialLocation={selectedLocation}
+                                onLocationSelect={setSelectedLocation}
+                                onClose={() => setShowMapModal(false)}
+                            />
+                        </div>
+                    </div>
+                )}
             </main>
         </div>
     );
