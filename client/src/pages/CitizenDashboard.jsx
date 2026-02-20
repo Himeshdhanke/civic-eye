@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Map as MapIcon,
     PlusCircle,
@@ -18,16 +18,184 @@ import {
     Clock,
     AlertTriangle,
     X,
-    User
+    User,
+    Sparkles,
+    ShieldCheck,
+    ArrowRight
 } from 'lucide-react';
-import { categorizeIssue } from '../services/geminiService';
+import { categorizeIssue, refineTranscript } from '../services/geminiService';
+import { supabase } from '../lib/supabase';
 
 export default function CitizenDashboard() {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [isRefining, setIsRefining] = useState(false);
+    const [isSuccess, setIsSuccess] = useState(false);
     const [complaintText, setComplaintText] = useState('');
+    const [interimText, setInterimText] = useState('');
     const [aiResult, setAiResult] = useState(null);
+    const [isListening, setIsListening] = useState(false);
+    const [location, setLocation] = useState(null);
+    const [locationStatus, setLocationStatus] = useState('');
+    const [volumeLevel, setVolumeLevel] = useState(0);
+    const recognitionRef = useRef(null);
+
+    // Initialize speech recognition with better performance
+    useEffect(() => {
+        const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.maxAlternatives = 1;
+            recognition.lang = 'en-IN'; // Optimized for Indian accents (English/Hindi/Marathi mix)
+
+            recognition.onresult = (event) => {
+                let currentFinal = '';
+                let currentInterim = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        currentFinal += event.results[i][0].transcript;
+                    } else {
+                        currentInterim += event.results[i][0].transcript;
+                    }
+                }
+
+                if (currentFinal) {
+                    setComplaintText(prev => {
+                        const trimmed = prev.trim();
+                        return trimmed + (trimmed ? ' ' : '') + currentFinal.trim();
+                    });
+                }
+                setInterimText(currentInterim);
+            };
+
+            recognition.onend = async () => {
+                setIsListening(false);
+                setInterimText('');
+
+                // Magic AI Fix: Clean up the transcript automatically
+                setComplaintText(prev => {
+                    if (prev.length > 10) {
+                        setIsRefining(true);
+                        refineTranscript(prev).then(refined => {
+                            setComplaintText(refined);
+                            setIsRefining(false);
+                        });
+                    }
+                    return prev;
+                });
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error:", event.error);
+                setIsListening(false);
+            };
+
+            recognitionRef.current = recognition;
+        }
+
+        return () => {
+            if (recognitionRef.current) recognitionRef.current.stop();
+        };
+    }, []);
+
+    const toggleListening = () => {
+        if (!recognitionRef.current) {
+            alert("Voice recognition not supported. Please use Chrome.");
+            return;
+        }
+
+        if (isListening) {
+            recognitionRef.current.stop();
+        } else {
+            try {
+                recognitionRef.current.start();
+                setIsListening(true);
+                // Simulate volume fluctuation
+                const interval = setInterval(() => {
+                    if (recognitionRef.current && isListening) {
+                        setVolumeLevel(Math.floor(Math.random() * 100));
+                    } else {
+                        clearInterval(interval);
+                    }
+                }, 100);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+    };
+
+    const detectLocation = () => {
+        setLocationStatus('Detecting...');
+        if (!navigator.geolocation) {
+            setLocationStatus('Not supported');
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                setLocation({
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude
+                });
+                setLocationStatus('Location Fixed');
+            },
+            (err) => {
+                console.error(err);
+                setLocationStatus('Access Denied');
+            }
+        );
+    };
+
+    const handleConfirmReport = async () => {
+        if (!aiResult || !location) {
+            alert("Please detect location before submitting.");
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            const userSession = JSON.parse(localStorage.getItem('user_session'));
+
+            // 1. Get Department ID
+            const { data: dept } = await supabase
+                .from('departments')
+                .select('id')
+                .ilike('name', `%${aiResult.category || aiResult.department || 'Road'}%`)
+                .single();
+
+            // 2. Insert Complaint
+            const { error } = await supabase.from('complaints').insert({
+                user_id: userSession?.id,
+                department_id: dept?.id,
+                title: aiResult.formatted_title || 'Civic Issue',
+                description: complaintText,
+                category: aiResult.category || 'General',
+                priority: (aiResult.priority || 'medium').toLowerCase(),
+                location: `POINT(${location.lng} ${location.lat})`,
+                status: 'open'
+            });
+
+            if (error) throw error;
+
+            setIsSuccess(true);
+            setTimeout(() => {
+                setIsSuccess(false);
+                setAiResult(null);
+                setComplaintText('');
+                setLocation(null);
+                setLocationStatus('');
+                setActiveTab('history');
+            }, 3000);
+        } catch (error) {
+            console.error(error);
+            alert("Failed to register complaint.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     const handleLogout = () => {
         localStorage.removeItem('user_session');
@@ -254,16 +422,35 @@ export default function CitizenDashboard() {
                                         </div>
                                     </div>
 
+                                    <div className="flex justify-between items-center mb-2">
+                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Speak naturally • High-Fidelity Audio Logic</p>
+                                    </div>
                                     <div className="relative mb-8 group">
-                                        <textarea
-                                            value={complaintText}
-                                            onChange={(e) => setComplaintText(e.target.value)}
-                                            placeholder="E.g., There is a large pothole near the main market entrance causing traffic congestion..."
-                                            className="w-full h-52 p-6 bg-slate-50/50 rounded-2xl border-2 border-slate-200 focus:border-primary-500 focus:bg-white focus:ring-4 focus:ring-primary-50 transition-all resize-none text-slate-700 placeholder:text-slate-400 font-medium text-lg leading-relaxed shadow-inner"
-                                        />
-                                        <button className="absolute bottom-4 right-4 p-3 bg-white text-slate-400 hover:text-primary-600 rounded-xl border border-slate-200 shadow-sm transition-colors hover:scale-105 active:scale-95">
-                                            <Mic size={20} />
-                                        </button>
+                                        <div className="relative">
+                                            <textarea
+                                                value={complaintText + (interimText ? (complaintText ? ' ' : '') + interimText : '')}
+                                                onChange={(e) => setComplaintText(e.target.value)}
+                                                placeholder="E.g., Large pothole at the intersection of Main St and Oak Ave..."
+                                                className="w-full h-64 p-8 bg-white rounded-[2rem] border-2 border-slate-100 focus:border-primary-500 transition-all resize-none text-slate-700 placeholder:text-slate-400 font-medium text-xl leading-relaxed shadow-2xl"
+                                            />
+
+                                            {isRefining && (
+                                                <div className="absolute top-6 right-6 flex items-center gap-3 bg-primary-600 text-white px-4 py-2 rounded-full shadow-lg animate-bounce z-30">
+                                                    <Loader2 size={16} className="animate-spin" />
+                                                    <span className="text-xs font-black uppercase tracking-widest">AI Perfecting...</span>
+                                                </div>
+                                            )}
+
+                                            <button
+                                                onClick={toggleListening}
+                                                className={`absolute bottom-6 right-6 p-5 rounded-2xl shadow-2xl transition-all hover:scale-110 active:scale-95 z-40 ${isListening
+                                                    ? 'bg-red-500 text-white ring-8 ring-red-100 animate-pulse'
+                                                    : 'bg-primary-600 text-white hover:bg-primary-700'
+                                                    }`}
+                                            >
+                                                <Mic size={28} />
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
@@ -273,12 +460,14 @@ export default function CitizenDashboard() {
                                             </div>
                                             <span className="text-sm font-bold group-hover:text-primary-600">Upload Photo Evidence</span>
                                         </div>
-                                        <button className="p-6 bg-white border border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-500 gap-3 hover:border-primary-400 hover:text-primary-600 hover:shadow-lg hover:shadow-primary-50 transition-all h-40 group relative overflow-hidden">
+                                        <button
+                                            onClick={detectLocation}
+                                            className={`p-6 border rounded-2xl flex flex-col items-center justify-center gap-3 transition-all h-40 group relative overflow-hidden ${location ? 'bg-green-50 border-green-200 text-green-700' : 'bg-white border-slate-200 text-slate-500 hover:border-primary-400 hover:text-primary-600'}`}>
                                             <div className="absolute inset-0 bg-gradient-to-br from-primary-50/0 to-primary-50/50 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                            <div className="p-3 bg-slate-50 rounded-full shadow-sm group-hover:bg-white z-10">
+                                            <div className={`p-3 rounded-full shadow-sm z-10 ${location ? 'bg-green-100 text-green-600' : 'bg-slate-50 group-hover:bg-white'}`}>
                                                 <MapPin size={24} />
                                             </div>
-                                            <span className="text-sm font-bold z-10">Auto-Detect Location</span>
+                                            <span className="text-sm font-bold z-10">{locationStatus || 'Auto-Detect Location'}</span>
                                         </button>
                                     </div>
 
@@ -335,12 +524,17 @@ export default function CitizenDashboard() {
                                                 </div>
                                             </div>
 
-                                            <button className="w-full mt-8 py-5 bg-green-600 text-white rounded-2xl font-bold text-xl hover:bg-green-700 transition-all shadow-xl shadow-green-200 hover:shadow-green-300 flex items-center justify-center gap-3 transform active:scale-[0.98]">
-                                                <CheckCircle2 size={24} />
-                                                Confirm & File Report
+                                            <button
+                                                onClick={handleConfirmReport}
+                                                disabled={isSubmitting}
+                                                className="w-full mt-8 py-5 bg-green-600 text-white rounded-2xl font-bold text-xl hover:bg-green-700 transition-all shadow-xl shadow-green-200 hover:shadow-green-300 flex items-center justify-center gap-3 transform active:scale-[0.98] disabled:opacity-50"
+                                            >
+                                                {isSubmitting ? <Loader2 className="animate-spin" size={24} /> : <CheckCircle2 size={24} />}
+                                                {isSubmitting ? 'Registering...' : 'Confirm & File Report'}
                                             </button>
                                         </div>
                                     )}
+
                                 </div>
                             </div>
                         )}
@@ -417,6 +611,23 @@ export default function CitizenDashboard() {
                     </div>
                 </div>
             </main>
+
+            {/* Success Overlay - Premium Celebration */}
+            {isSuccess && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-primary-900/20 backdrop-blur-xl animate-in fade-in duration-500">
+                    <div className="bg-white rounded-[3rem] p-12 text-center shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] border border-white max-w-sm w-full animate-in zoom-in-95 duration-500 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-green-400 to-blue-500"></div>
+                        <div className="w-24 h-24 bg-green-100 text-green-600 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-xl shadow-green-100 rotate-3">
+                            <ShieldCheck size={48} />
+                        </div>
+                        <h2 className="text-3xl font-heading font-black text-slate-800 mb-4 tracking-tight">Report Secured!</h2>
+                        <p className="text-slate-500 font-medium leading-relaxed mb-8 text-lg">Your civic duty is complete. Our AI teams are now routing this to the <span className="text-primary-600 font-bold">{aiResult?.department}</span> department.</p>
+                        <div className="flex items-center justify-center gap-2 text-primary-600 font-bold uppercase tracking-widest text-xs">
+                            Syncing with history <ArrowRight size={14} className="animate-bounce-x" />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
