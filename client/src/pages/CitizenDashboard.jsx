@@ -40,6 +40,7 @@ export default function CitizenDashboard() {
     const [locationStatus, setLocationStatus] = useState('');
     const [volumeLevel, setVolumeLevel] = useState(0);
     const recognitionRef = useRef(null);
+    const isListeningRef = useRef(false);
 
     // Initialize speech recognition with better performance
     useEffect(() => {
@@ -71,21 +72,10 @@ export default function CitizenDashboard() {
                 setInterimText(currentInterim);
             };
 
-            recognition.onend = async () => {
+            recognition.onend = () => {
                 setIsListening(false);
+                isListeningRef.current = false;
                 setInterimText('');
-
-                // Magic AI Fix: Clean up the transcript automatically
-                setComplaintText(prev => {
-                    if (prev.length > 10) {
-                        setIsRefining(true);
-                        refineTranscript(prev).then(refined => {
-                            setComplaintText(refined);
-                            setIsRefining(false);
-                        });
-                    }
-                    return prev;
-                });
             };
 
             recognition.onerror = (event) => {
@@ -113,19 +103,42 @@ export default function CitizenDashboard() {
             try {
                 recognitionRef.current.start();
                 setIsListening(true);
+                isListeningRef.current = true;
+
                 // Simulate volume fluctuation
                 const interval = setInterval(() => {
-                    if (recognitionRef.current && isListening) {
+                    if (isListeningRef.current) {
                         setVolumeLevel(Math.floor(Math.random() * 100));
                     } else {
                         clearInterval(interval);
+                        setVolumeLevel(0);
                     }
                 }, 100);
             } catch (e) {
-                console.error(e);
+                console.error("Speech start error:", e);
+                setIsListening(false);
+                isListeningRef.current = false;
             }
         }
     };
+
+    // Effect to trigger AI refinement when recording stops and text is long enough
+    useEffect(() => {
+        if (!isListening && complaintText.length > 10 && !isRefining) {
+            const handleRefinement = async () => {
+                setIsRefining(true);
+                try {
+                    const refined = await refineTranscript(complaintText);
+                    setComplaintText(refined);
+                } catch (error) {
+                    console.error("Refinement error:", error);
+                } finally {
+                    setIsRefining(false);
+                }
+            };
+            handleRefinement();
+        }
+    }, [isListening]);
 
     const detectLocation = () => {
         setLocationStatus('Detecting...');

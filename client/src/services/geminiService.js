@@ -41,7 +41,7 @@ export const refineTranscript = async (text) => {
             3. If it's phonetically written local language (e.g., "sadak pe kachra hai" or "rastyavar kachra ahe"), translate it to a professional, formal Civic Complaint in English.
             4. If it's already in formal local language, refine its grammar and provide the English translation for the official report.
             
-            Return ONLY the final, polished, and professional English version of the complaint.
+            Return ONLY the final, polished, and professional English version of the complaint. Do not include any explanation or meta-talk.
             
             Input Text: "${text}"
         `;
