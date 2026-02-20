@@ -17,8 +17,4 @@
   .glass-dark {
     @apply bg-slate-900/60 backdrop-blur-md border border-slate-700/50 shadow-2xl;
   }
-
-  .text-glow {
-    text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
-  }
 }

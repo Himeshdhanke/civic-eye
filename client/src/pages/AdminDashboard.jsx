@@ -17,7 +17,10 @@ import {
     MoreVertical,
     Filter,
     Download,
-    Bell
+    Bell,
+    Mic,
+    MicOff,
+    Loader2
 } from 'lucide-react';
 import {
     Chart as ChartJS,
@@ -321,9 +324,13 @@ export default function AdminDashboard() {
                 <header className="h-20 bg-white/80 backdrop-blur-xl border-b border-white z-30 sticky top-0 px-6 lg:px-10 flex items-center justify-between shadow-sm">
                     <div className="flex items-center gap-4">
                         <button onClick={() => setIsSidebarOpen(true)} className="p-2 lg:hidden text-slate-500 hover:bg-slate-100 rounded-lg"><Menu size={24} /></button>
-                        <div className="hidden md:flex items-center bg-slate-100/50 px-4 py-2.5 rounded-full border border-slate-200 hover:bg-white hover:border-indigo-200 hover:shadow-md focus-within:bg-white focus-within:ring-4 focus-within:ring-indigo-100 focus-within:border-indigo-300 transition-all w-96 group">
+                        <div className="hidden md:flex items-center bg-slate-100/50 px-4 py-2.5 rounded-full border border-slate-200 hover:bg-white hover:border-indigo-200 hover:shadow-md transition-all w-96 group">
                             <Search size={18} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                            <input type="text" placeholder="Search complaints, citizens, or IDs..." className="bg-transparent border-none outline-none ml-3 text-sm w-full text-slate-700 placeholder:text-slate-400 font-medium" />
+                            <input
+                                type="text"
+                                placeholder="Search complaints, citizens, or IDs..."
+                                className="bg-transparent border-none outline-none ml-3 text-sm w-full text-slate-700 placeholder:text-slate-400 font-medium"
+                            />
                         </div>
                     </div>
                     <div className="flex items-center gap-6">
