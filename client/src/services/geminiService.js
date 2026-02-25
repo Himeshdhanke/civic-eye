@@ -1,38 +1,17 @@
-import { GoogleGenAI } from "@google/genai";
+import axios from "axios";
 
-const ai = new GoogleGenAI({
-  apiKey: import.meta.env.VITE_GEMINI_API_KEY
-});
+// Relative path for Vercel/Local compatibility
+const API_BASE_URL = "/api";
 
 export const categorizeIssue = async (description) => {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: `
-You are a civic issue classification system.
-
-Return ONLY valid JSON:
-{
-  "category": "Road | Garbage | Drainage | Lighting | Sanitation",
-  "department": "String",
-  "priority": "Low | Medium | High",
-  "formatted_title": "Short descriptive title"
-}
-
-Issue:
-${description}
-`
+    const response = await axios.post(`${API_BASE_URL}/categorize`, {
+      description,
     });
 
-    const text = response.text;
-
-    try {
-      return JSON.parse(text);
-    } catch {
-      return JSON.parse(text.replace(/```json|```/g, ""));
-    }
+    return response.data;
   } catch (error) {
-    console.error("Gemini Categorization Error:", error);
+    console.error("Gemini Backend Call Error:", error);
 
     // FALLBACK: Return a mock response so the demo doesn't break
     console.warn("Using mock fallback for Gemini categorization...");

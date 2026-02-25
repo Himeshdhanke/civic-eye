@@ -1,6 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
+import axios from 'axios';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Function to initialize Supabase client using relative path
+const initSupabase = async () => {
+    try {
+        const response = await axios.get('/api/config');
+        const { supabaseUrl, supabaseAnonKey } = response.data;
+        return createClient(supabaseUrl, supabaseAnonKey);
+    } catch (error) {
+        console.error('Failed to fetch config from backend:', error);
+        return null;
+    }
+};
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabasePromise = initSupabase();
+
+export let supabase = null;
+supabasePromise.then(client => {
+    supabase = client;
+});
