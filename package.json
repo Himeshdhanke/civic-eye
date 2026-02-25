@@ -3,6 +3,9 @@
     "version": "1.0.0",
     "description": "Unified CivicEye AI platform",
     "type": "module",
+    "workspaces": [
+        "client"
+    ],
     "scripts": {
         "dev": "npx concurrently \"npm run dev --prefix client\" \"node --watch api/index.js\"",
         "build": "npm run build --prefix client",
