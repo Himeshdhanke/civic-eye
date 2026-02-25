@@ -13,8 +13,13 @@ app.use(cors());
 app.use(express.json());
 
 // Initialize Gemini API
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+if (!process.env.GEMINI_API_KEY) {
+    console.error("CRITICAL: GEMINI_API_KEY is missing from environment variables!");
+}
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "dummy_key");
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+console.log("Gemini model initialized: gemini-2.5-flash");
 
 app.post("/api/categorize", async (req, res) => {
     console.log("Categorize Request Body:", req.body);
